@@ -232,6 +232,15 @@ func (b *BtcWallet) ConfirmedBalance(confs int32) (btcutil.Amount, error) {
 	return balance, nil
 }
 
+// GetWalletBirthday returns the approximate (within one day) time the
+// wallet was created.  This is because the value is stored as 'days
+// since the Bitcoin genesis block' or 'BDG (Bitcoin Days Genesis)'
+// but is returned as a time.Time
+
+func (b *BtcWallet) GetWalletBirthday() (time.Time, error) {
+	return b.cfg.Birthday, nil
+}
+
 // NewAddress returns the next external or internal address for the wallet
 // dictated by the value of the `change` parameter. If change is true, then an
 // internal address will be returned, otherwise an external address should be

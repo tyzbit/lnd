@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -148,6 +149,12 @@ type WalletController interface {
 	// the total spendable balance of the wallet. We require this as only
 	// witness inputs can be used for funding channels.
 	ConfirmedBalance(confs int32) (btcutil.Amount, error)
+
+	// GetWalletBirthday returns the approximate (within one day) time the
+	// wallet was created.  This is because the value is stored as 'days
+	// since the Bitcoin genesis block' or 'BDG (Bitcoin Days Genesis)'
+	// but is returned as a time.Time
+	GetWalletBirthday() (time.Time, error)
 
 	// NewAddress returns the next external or internal address for the
 	// wallet dictated by the value of the `change` parameter. If change is

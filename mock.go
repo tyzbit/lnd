@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -250,6 +251,10 @@ func (*mockWalletController) FetchInputInfo(
 }
 func (*mockWalletController) ConfirmedBalance(confs int32) (btcutil.Amount, error) {
 	return 0, nil
+}
+
+func (*mockWalletController) GetWalletBirthday() (time.Time, error) {
+	return time.Unix(1231006505, 0), nil
 }
 
 // NewAddress is called to get new addresses for delivery, change etc.
