@@ -29,7 +29,7 @@ import (
 	"github.com/btcsuite/btcwallet/wallet/txauthor"
 	"github.com/coreos/bbolt"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	proxy "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/lightningnetwork/lnd/autopilot"
 	"github.com/lightningnetwork/lnd/build"
@@ -4597,17 +4597,36 @@ func (r *rpcServer) ForwardingHistory(ctx context.Context,
 	var (
 		startTime, endTime time.Time
 
+		reverseSearch bool = true
+
 		numEvents uint32
 	)
 
-	// If the start and end time were not set, then we'll just return the
-	// records over the past 24 hours.
-	if req.StartTime == 0 && req.EndTime == 0 {
+	// If the start time wasn't specified, assume a default start time of the
+	// wallet's birthday.
+	if req.StartTime == 0 {
+		walletBirthday, err := r.server.cc.wallet.WalletController.GetWalletBirthday()
+		if err != nil {
+			return nil, fmt.Errorf("unable to determine wallet birthday: %v", err)
+		}
+
+		// Subtract an additional 24 hours from the birthday to ensure we do
+		// not miss any forwarding events.  This is necessary because the value
+		// returned by GetWalletBirthday has a minimum resolution of one day.
+		startTime = walletBirthday.Add(-time.Hour * 24)
+	} else {
+
+		// If the start time was explicitly specified, we should assume
+		// that the caller wants to query events from startTime onwards
+		reverseSearch = false
+		startTime = time.Unix(int64(req.StartTime), 0)
+	}
+
+	// If the end time wasn't specified, assume a default end time of now.
+	if req.EndTime == 0 {
 		now := time.Now()
-		startTime = now.Add(-time.Hour * 24)
 		endTime = now
 	} else {
-		startTime = time.Unix(int64(req.StartTime), 0)
 		endTime = time.Unix(int64(req.EndTime), 0)
 	}
 
@@ -4618,13 +4637,14 @@ func (r *rpcServer) ForwardingHistory(ctx context.Context,
 		numEvents = 100
 	}
 
-	// Next, we'll map the proto request into a format the is understood by
+	// Next, we'll map the proto request into a format that is understood by
 	// the forwarding log.
 	eventQuery := channeldb.ForwardingEventQuery{
-		StartTime:    startTime,
-		EndTime:      endTime,
-		IndexOffset:  req.IndexOffset,
-		NumMaxEvents: numEvents,
+		StartTime:     startTime,
+		EndTime:       endTime,
+		IndexOffset:   req.IndexOffset,
+		NumMaxEvents:  numEvents,
+		ReverseSearch: reverseSearch,
 	}
 	timeSlice, err := r.server.chanDB.ForwardingLog().Query(eventQuery)
 	if err != nil {
