@@ -3514,8 +3514,11 @@ var forwardingHistoryCommand = cli.Command{
 	Query the HTLC switch's internal forwarding log for all completed
 	payment circuits (HTLCs) over a particular time range (--start_time and
 	--end_time). The start and end times are meant to be expressed in
-	seconds since the Unix epoch. If a start and end time aren't provided,
-	then events over the past 24 hours are queried for.
+	seconds since the Unix epoch.
+
+	If --start_time is not provided, a reverse chronological search is
+	performed with --start_time set to the wallet's birthday. If --end_time
+	isn't provided, --end_time defaults to the current time.
 
 	The max number of events returned is 50k. The default number is 100,
 	callers can use the --max_events param to modify this value.

@@ -166,6 +166,10 @@ type ForwardingEventQuery struct {
 
 	// NumMaxEvents is the max number of events to return.
 	NumMaxEvents uint32
+
+	// ReverseSearch is a flag whether to page backwards through the search
+	// chronologically rather than forwards
+	ReverseSearch bool
 }
 
 // ForwardingLogTimeSlice is the response to a forwarding query. It includes
@@ -204,6 +208,10 @@ func (f *ForwardingLog) Query(q ForwardingEventQuery) (ForwardingLogTimeSlice, e
 	recordsToSkip := q.IndexOffset
 	recordOffset := q.IndexOffset
 
+	// ReverseSearch is a flag whether to page through the search forward
+	// in time (true) or to search backwards in time (false)
+	reverseSearch := q.ReverseSearch
+
 	err := f.db.View(func(tx *bbolt.Tx) error {
 		// If the bucket wasn't found, then there aren't any events to
 		// be returned.
@@ -224,41 +232,84 @@ func (f *ForwardingLog) Query(q ForwardingEventQuery) (ForwardingLogTimeSlice, e
 		// We'll continue until either we reach the end of the range,
 		// or reach our max number of events.
 		logCursor := logBucket.Cursor()
-		timestamp, events := logCursor.Seek(startTime[:])
-		for ; timestamp != nil && bytes.Compare(timestamp, endTime[:]) <= 0; timestamp, events = logCursor.Next() {
-			// If our current return payload exceeds the max number
-			// of events, then we'll exit now.
-			if uint32(len(resp.ForwardingEvents)) >= q.NumMaxEvents {
-				return nil
-			}
 
-			// If we're not yet past the user defined offset, then
-			// we'll continue to seek forward.
-			if recordsToSkip > 0 {
-				recordsToSkip--
-				continue
-			}
-
-			currentTime := time.Unix(
-				0, int64(byteOrder.Uint64(timestamp)),
-			)
-
-			// At this point, we've skipped enough records to start
-			// to collate our query. For each record, we'll
-			// increment the final record offset so the querier can
-			// utilize pagination to seek further.
-			readBuf := bytes.NewReader(events)
-			for readBuf.Len() != 0 {
-				var event ForwardingEvent
-				err := decodeForwardingEvent(readBuf, &event)
-				if err != nil {
-					return err
+		// If we're doing a forward chronological search, we start at
+		// starTime, otherwise we start the search at endTime
+		if reverseSearch {
+			timestamp, events := logCursor.Seek(endTime[:])
+			for ; timestamp != nil && bytes.Compare(timestamp, startTime[:]) >= 0; timestamp, events = logCursor.Last() {
+				// If our current return payload exceeds the max number
+				// of events, then we'll exit now.
+				if uint32(len(resp.ForwardingEvents)) >= q.NumMaxEvents {
+					return nil
 				}
 
-				event.Timestamp = currentTime
-				resp.ForwardingEvents = append(resp.ForwardingEvents, event)
+				// If we're not yet past the user defined offset, then
+				// we'll continue to seek backward.
+				if recordsToSkip > 0 {
+					recordsToSkip--
+					continue
+				}
 
-				recordOffset++
+				currentTime := time.Unix(
+					0, int64(byteOrder.Uint64(timestamp)),
+				)
+
+				// At this point, we've skipped enough records to start
+				// to collate our query. For each record, we'll
+				// increment the final record offset so the querier can
+				// utilize pagination to seek further.
+				readBuf := bytes.NewReader(events)
+				for readBuf.Len() != 0 {
+					var event ForwardingEvent
+					err := decodeForwardingEvent(readBuf, &event)
+					if err != nil {
+						return err
+					}
+
+					event.Timestamp = currentTime
+					resp.ForwardingEvents = append(resp.ForwardingEvents, event)
+
+					recordOffset++
+				}
+			}
+		} else {
+			timestamp, events := logCursor.Seek(startTime[:])
+			for ; timestamp != nil && bytes.Compare(timestamp, endTime[:]) <= 0; timestamp, events = logCursor.Next() {
+				// If our current return payload exceeds the max number
+				// of events, then we'll exit now.
+				if uint32(len(resp.ForwardingEvents)) >= q.NumMaxEvents {
+					return nil
+				}
+
+				// If we're not yet past the user defined offset, then
+				// we'll continue to seek forward.
+				if recordsToSkip > 0 {
+					recordsToSkip--
+					continue
+				}
+
+				currentTime := time.Unix(
+					0, int64(byteOrder.Uint64(timestamp)),
+				)
+
+				// At this point, we've skipped enough records to start
+				// to collate our query. For each record, we'll
+				// increment the final record offset so the querier can
+				// utilize pagination to seek further.
+				readBuf := bytes.NewReader(events)
+				for readBuf.Len() != 0 {
+					var event ForwardingEvent
+					err := decodeForwardingEvent(readBuf, &event)
+					if err != nil {
+						return err
+					}
+
+					event.Timestamp = currentTime
+					resp.ForwardingEvents = append(resp.ForwardingEvents, event)
+
+					recordOffset++
+				}
 			}
 		}
 
